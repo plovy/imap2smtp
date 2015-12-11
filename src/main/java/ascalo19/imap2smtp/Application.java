@@ -11,7 +11,11 @@ import org.springframework.messaging.MessagingException;
 import org.springframework.messaging.SubscribableChannel;
 import org.springframework.messaging.support.ExecutorSubscribableChannel;
 
+import javax.mail.Authenticator;
+import javax.mail.PasswordAuthentication;
+import javax.mail.internet.MimeMessage;
 import java.util.Properties;
+import java.util.concurrent.Exchanger;
 
 @SpringBootApplication
 public class Application {
@@ -26,7 +30,30 @@ public class Application {
 		result.subscribe(new MessageHandler() {
 			@Override
 			public void handleMessage(Message<?> message) throws MessagingException {
-				System.out.println(message);
+				try {
+					MimeMessage email = (MimeMessage) message.getPayload();
+					System.out.println(email.getSubject());
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		});
+		return result;
+	}
+
+	@Bean
+	public ImapMailReceiver imapReceiver() {
+		Properties conf = new Properties();
+		conf.setProperty("mail.imap.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
+		conf.setProperty("mail.imap.socketFactory.fallback", "false");
+		conf.setProperty("mail.store.protocol", "imaps");
+		conf.setProperty("mail.debug", "false");
+		ImapMailReceiver result = new ImapMailReceiver("imaps://imap.gmail.com:993/inbox");
+		result.setJavaMailProperties(conf);
+		result.setJavaMailAuthenticator(new Authenticator() {
+			@Override
+			protected PasswordAuthentication getPasswordAuthentication() {
+				return new PasswordAuthentication("logmaster.ascalo19@gmail.com", "gA?p!2dE");
 			}
 		});
 		return result;
@@ -34,14 +61,7 @@ public class Application {
 
 	@Bean
 	public ImapIdleChannelAdapter imapAdapter() {
-		Properties conf = new Properties();
-		conf.setProperty("mail.imap.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
-		conf.setProperty("mail.imap.socketFactory.fallback", "false");
-		conf.setProperty("mail.store.protocol", "imaps");
-		conf.setProperty("mail.debug", "false");
-		ImapMailReceiver receiver = new ImapMailReceiver("imaps://logmaster.ascalo19@gmail.com:gA?p!2dE@imap.gmail.com:465/inbox");
-		receiver.setJavaMailProperties(conf);
-		ImapIdleChannelAdapter result = new ImapIdleChannelAdapter(receiver);
+		ImapIdleChannelAdapter result = new ImapIdleChannelAdapter(imapReceiver());
 		result.setOutputChannel(messageChannel());
 		return result;
 	}
