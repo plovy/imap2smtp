@@ -5,14 +5,18 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.integration.mail.ImapIdleChannelAdapter;
 import org.springframework.integration.mail.ImapMailReceiver;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageHandler;
 import org.springframework.messaging.MessagingException;
 import org.springframework.messaging.SubscribableChannel;
 import org.springframework.messaging.support.ExecutorSubscribableChannel;
 
+import javax.mail.Address;
 import javax.mail.Authenticator;
 import javax.mail.PasswordAuthentication;
+import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 import java.util.Properties;
 import java.util.concurrent.Exchanger;
@@ -33,6 +37,8 @@ public class Application {
 				try {
 					MimeMessage email = (MimeMessage) message.getPayload();
 					System.out.println(email.getSubject());
+					Address to = new InternetAddress("ascalo19@ascalo19.net");
+					mailForwarder().forward(new Address[]{to}, email);
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
@@ -63,6 +69,13 @@ public class Application {
 	public ImapIdleChannelAdapter imapAdapter() {
 		ImapIdleChannelAdapter result = new ImapIdleChannelAdapter(imapReceiver());
 		result.setOutputChannel(messageChannel());
+		return result;
+	}
+
+	@Bean
+	public JavaMailForwarder mailForwarder() {
+		JavaMailForwarder result = new JavaMailForwarder();
+		result.setHost("10.0.0.203");
 		return result;
 	}
 }
