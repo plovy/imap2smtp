@@ -1,5 +1,6 @@
 package ascalo19.imap2smtp;
 
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
@@ -37,7 +38,14 @@ public class Application {
 				try {
 					MimeMessage email = (MimeMessage) message.getPayload();
 					System.out.println(email.getSubject());
-					Address to = new InternetAddress("ascalo19@ascalo19.net");
+					String[] r = email.getHeader("Received");
+					for (int i = r.length - 1; i >= 0; i--) {
+						if (StringUtils.contains(r[i], "for ")) {
+							System.out.println(StringUtils.substringBetween(r[i], "for ", " "));
+							break;
+						}
+					}
+					Address to = new InternetAddress("<pascal.lovy@iteral.ch>");
 					mailForwarder().forward(new Address[]{to}, email);
 				} catch (Exception e) {
 					e.printStackTrace();
@@ -59,7 +67,7 @@ public class Application {
 		result.setJavaMailAuthenticator(new Authenticator() {
 			@Override
 			protected PasswordAuthentication getPasswordAuthentication() {
-				return new PasswordAuthentication("logmaster.ascalo19@gmail.com", "gA?p!2dE");
+				return new PasswordAuthentication("logmaster.ascalo19@gmail.com", "PASSWORD");
 			}
 		});
 		return result;
@@ -75,7 +83,8 @@ public class Application {
 	@Bean
 	public JavaMailForwarder mailForwarder() {
 		JavaMailForwarder result = new JavaMailForwarder();
-		result.setHost("10.0.0.203");
+		result.setHost("localhost");
+		result.setPort(2525);
 		return result;
 	}
 }
