@@ -6,21 +6,16 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.integration.mail.ImapIdleChannelAdapter;
 import org.springframework.integration.mail.ImapMailReceiver;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageHandler;
 import org.springframework.messaging.MessagingException;
 import org.springframework.messaging.SubscribableChannel;
 import org.springframework.messaging.support.ExecutorSubscribableChannel;
 
-import javax.mail.Address;
 import javax.mail.Authenticator;
 import javax.mail.PasswordAuthentication;
-import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 import java.util.Properties;
-import java.util.concurrent.Exchanger;
 
 @SpringBootApplication
 public class Application {
@@ -45,8 +40,9 @@ public class Application {
 							break;
 						}
 					}
-					Address to = new InternetAddress("<pascal.lovy@iteral.ch>");
-					mailForwarder().forward(new Address[]{to}, email);
+					//Address to = new InternetAddress("<pascal.lovy@iteral.ch>");
+					Test to + cc + cci
+					mailForwarder().forward(email.getAllRecipients(), email);
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
@@ -63,11 +59,12 @@ public class Application {
 		conf.setProperty("mail.store.protocol", "imaps");
 		conf.setProperty("mail.debug", "false");
 		ImapMailReceiver result = new ImapMailReceiver("imaps://imap.gmail.com:993/inbox");
+		result.setShouldDeleteMessages(true);
 		result.setJavaMailProperties(conf);
 		result.setJavaMailAuthenticator(new Authenticator() {
 			@Override
 			protected PasswordAuthentication getPasswordAuthentication() {
-				return new PasswordAuthentication("logmaster.ascalo19@gmail.com", "PASSWORD");
+				return new PasswordAuthentication("iteral.iteral@gmail.com", "1pwd4Mails");
 			}
 		});
 		return result;
