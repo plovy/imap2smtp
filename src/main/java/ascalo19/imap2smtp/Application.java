@@ -21,6 +21,7 @@ import org.springframework.messaging.support.ExecutorSubscribableChannel;
 
 import javax.mail.Address;
 import javax.mail.Authenticator;
+import javax.mail.Folder;
 import javax.mail.PasswordAuthentication;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
@@ -44,9 +45,9 @@ public class Application {
 		result.subscribe(new MessageHandler() {
 			@Override
 			public void handleMessage(Message<?> message) throws MessagingException {
-				//if (true) throw new MessagingException("REJECT TEST");
+				MimeMessage email = (MimeMessage) message.getPayload();
 				try {
-					MimeMessage email = (MimeMessage) message.getPayload();
+//					if (true) throw new MessagingException("REJECT TEST");
 					if (message.getHeaders().containsKey("SPAM")) {
 						email.setSubject("[SPAM] " + email.getSubject());
 					}
@@ -63,15 +64,29 @@ public class Application {
 					smtpForwarder().forward(recipients, email);
 				} catch (Exception e) {
 					e.printStackTrace();
+					rejectMessage(email);
 				}
 			}
 		});
 		return result;
 	}
 
+	private void rejectMessage(MimeMessage email) {
+		try {
+			Folder folder = email.getFolder();
+			Folder rejectFolder = folder.getStore().getFolder("Reject");
+			rejectFolder.open(Folder.READ_WRITE);
+			rejectFolder.appendMessages(new MimeMessage[]{email});
+			rejectFolder.close(false);
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
+	}
+
 	@Bean
 	public ImapMailReceiver imapInboxReceiver() {
 		ImapMailReceiver result = new ImapMailReceiver("imaps://imap.gmail.com:993/inbox2");
+		result.setShouldMarkMessagesAsRead(false);
 		result.setShouldDeleteMessages(true);
 		result.setJavaMailProperties(javaMailProperties());
 		result.setJavaMailAuthenticator(javaMailAuthenticator());
@@ -137,7 +152,6 @@ public class Application {
 		Authenticator result = new Authenticator() {
 			@Override
 			protected PasswordAuthentication getPasswordAuthentication() {
-
 				return new PasswordAuthentication("<EMAIL>", "<PASSWORD>");
 			}
 		};
