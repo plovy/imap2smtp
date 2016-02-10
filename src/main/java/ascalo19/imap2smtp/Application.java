@@ -47,7 +47,6 @@ public class Application {
 			public void handleMessage(Message<?> message) throws MessagingException {
 				MimeMessage email = (MimeMessage) message.getPayload();
 				try {
-//					if (true) throw new MessagingException("REJECT TEST");
 					if (message.getHeaders().containsKey("SPAM")) {
 						email.setSubject("[SPAM] " + email.getSubject());
 					}
@@ -60,10 +59,10 @@ public class Application {
 							break;
 						}
 					}
-					log.info("Delivering to " + Arrays.toString(recipients) + " message " + email.getSubject());
+					log.info("Delivering message " + email.getSubject() + "to " + Arrays.toString(recipients));
 					smtpForwarder().forward(recipients, email);
 				} catch (Exception e) {
-					e.printStackTrace();
+					sendAlert(email, e);
 					rejectMessage(email);
 				}
 			}
@@ -79,7 +78,16 @@ public class Application {
 			rejectFolder.appendMessages(new MimeMessage[]{email});
 			rejectFolder.close(false);
 		} catch (Exception e) {
-			throw new RuntimeException(e);
+			log.error("Unexpected error while rejecting message " + email, e);
+		}
+	}
+
+	private void sendAlert(MimeMessage email, Exception e) {
+		try {
+			log.error("Error while delivering message " + email, e);
+			// TODO
+		} catch (Exception ex) {
+			log.error("Unexpected error while sending alert for message " + email, ex);
 		}
 	}
 
@@ -94,8 +102,20 @@ public class Application {
 	}
 
 	@Bean
+	public ImapMailReceiver imapRetryReceiver() {
+		ImapMailReceiver result = new ImapMailReceiver("imaps://imap.gmail.com:993/Retry");
+		result.setSearchTermStrategy(new AllMessagesSearchTermStrategy());
+		result.setShouldMarkMessagesAsRead(false);
+		result.setShouldDeleteMessages(true);
+		result.setJavaMailProperties(javaMailProperties());
+		result.setJavaMailAuthenticator(javaMailAuthenticator());
+		return result;
+	}
+
+	@Bean
 	public ImapMailReceiver imapSpamReceiver() {
 		ImapMailReceiver result = new ImapMailReceiver("imaps://imap.gmail.com:993/Spam2");
+		result.setShouldMarkMessagesAsRead(false);
 		result.setShouldDeleteMessages(true);
 		result.setJavaMailProperties(javaMailProperties());
 		result.setJavaMailAuthenticator(javaMailAuthenticator());
@@ -105,6 +125,13 @@ public class Application {
 	@Bean
 	public ImapIdleChannelAdapter messageInboxInput() {
 		ImapIdleChannelAdapter result = new ImapIdleChannelAdapter(imapInboxReceiver());
+		result.setOutputChannel(messageOutput());
+		return result;
+	}
+
+	@Bean
+	public ImapIdleChannelAdapter messageRetryInput() {
+		ImapIdleChannelAdapter result = new ImapIdleChannelAdapter(imapRetryReceiver());
 		result.setOutputChannel(messageOutput());
 		return result;
 	}
