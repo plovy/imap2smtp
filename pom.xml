@@ -4,9 +4,9 @@
 
 	<groupId>ascalo19</groupId>
 	<artifactId>imap2smtp</artifactId>
-	<version>1.0</version>
-	<packaging>jar</packaging>
 	<name>imap2smtp</name>
+	<version>1.0-SNAPSHOT</version>
+	<packaging>jar</packaging>
 	<description>A service that fetch mails through IMAP and forward them to an SMTP server</description>
 
 	<properties>
@@ -19,22 +19,22 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter</artifactId>
-			<version>1.3.0.RELEASE</version>
+			<version>1.3.2.RELEASE</version>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-autoconfigure</artifactId>
-			<version>1.3.0.RELEASE</version>
+			<version>1.3.2.RELEASE</version>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.integration</groupId>
 			<artifactId>spring-integration-mail</artifactId>
-			<version>4.2.3.RELEASE</version>
+			<version>4.2.4.RELEASE</version>
 		</dependency>
 		<dependency>
 			<groupId>com.sun.mail</groupId>
 			<artifactId>javax.mail</artifactId>
-			<version>1.5.4</version>
+			<version>1.5.5</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.commons</groupId>
@@ -56,7 +56,6 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.1</version>
 				<configuration>
 					<source>${project.build.sourceVersion}</source>
 					<target>${project.build.sourceVersion}</target>
@@ -66,48 +65,44 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-resources-plugin</artifactId>
-				<version>2.6</version>
 				<configuration>
 					<encoding>${project.build.sourceEncoding}</encoding>
 				</configuration>
 			</plugin>
 			<plugin>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-maven-plugin</artifactId>
+				<configuration>
+					<executable>true</executable>
+				</configuration>
+				<executions>
+					<execution>
+						<goals>
+							<goal>repackage</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>appassembler-maven-plugin</artifactId>
-				<version>1.8.1</version>
 				<configuration>
+					<outputFileNameMapping>@{artifactId}@@{dashClassifier?}@.@{extension}@</outputFileNameMapping>
 					<repositoryLayout>flat</repositoryLayout>
-					<repositoryName>lib</repositoryName>
-					<configurationDirectory>conf</configurationDirectory>
+					<useWildcardClassPath>true</useWildcardClassPath>
+					<configurationDirectory>config</configurationDirectory>
 					<includeConfigurationDirectoryInClasspath>true</includeConfigurationDirectoryInClasspath>
-					<assembleDirectory>${project.build.directory}/jsw/${project.artifactId}</assembleDirectory>
-					<target>${project.build.directory}</target>
-					<extraJvmArguments>-Dcom.sun.management.jmxremote.port=1099
-						-Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false
-					</extraJvmArguments>
 					<defaultJvmSettings>
 						<initialMemorySize>512M</initialMemorySize>
 						<maxMemorySize>1024M</maxMemorySize>
-						<systemProperties>
-							<systemProperty>com.sun.management.jmxremote</systemProperty>
-							<systemProperty>com.sun.management.jmxremote.port=8686</systemProperty>
-							<systemProperty>com.sun.management.jmxremote.authenticate=false</systemProperty>
-							<systemProperty>com.sun.management.jmxremote.ssl=false</systemProperty>
-						</systemProperties>
 						<extraArguments>
 							<extraArgument>-server</extraArgument>
 						</extraArguments>
 					</defaultJvmSettings>
-					<programs>
-						<program>
-							<mainClass>lamelcolor.nav.lameai.connector.Application</mainClass>
-							<name>run</name>
-						</program>
-					</programs>
 					<daemons>
 						<daemon>
 							<id>${project.artifactId}</id>
-							<mainClass>lamelcolor.nav.lameai.connector.Application</mainClass>
+							<mainClass>ascalo19.imap2smtp.Application</mainClass>
 							<platforms>
 								<platform>jsw</platform>
 							</platforms>
@@ -120,24 +115,16 @@
 									</includes>
 									<configuration>
 										<property>
-											<name>configuration.directory.in.classpath.first</name>
-											<value>conf</value>
-										</property>
-										<property>
-											<name>set.default.REPO_DIR</name>
-											<value>lib</value>
-										</property>
-										<property>
 											<name>wrapper.logfile</name>
-											<value>logs/wrapper.log</value>
+											<value>${project.artifactId}.log</value>
 										</property>
 										<property>
 											<name>wrapper.logfile.maxsize</name>
-											<value>20m</value>
+											<value>10m</value>
 										</property>
 										<property>
 											<name>wrapper.logfile.maxfiles</name>
-											<value>100</value>
+											<value>20</value>
 										</property>
 									</configuration>
 								</generatorConfiguration>
@@ -150,15 +137,14 @@
 						<id>generate-app</id>
 						<phase>package</phase>
 						<goals>
-							<goal>assemble</goal>
 							<goal>generate-daemons</goal>
 						</goals>
 					</execution>
 				</executions>
 			</plugin>
 			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-assembly-plugin</artifactId>
-				<version>2.4.1</version>
 				<configuration>
 					<descriptors>
 						<descriptor>src/assembly/distribution.xml</descriptor>

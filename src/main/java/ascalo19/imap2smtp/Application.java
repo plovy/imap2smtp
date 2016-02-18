@@ -3,6 +3,7 @@ package ascalo19.imap2smtp;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
@@ -30,10 +31,18 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
 
+/**
+ * Installation instructions
+ * https://docs.spring.io/spring-boot/docs/current/reference/html/deployment-install.html
+ *
+ */
 @SpringBootApplication
 public class Application {
 
 	private static final Log log = LogFactory.getLog(HeaderEnricher.class);
+
+	@Value("${imap.retry.url}")
+	private String imapRetryUrl;
 
 	public static void main(String[] args) {
 		SpringApplication.run(Application.class, args);
@@ -103,7 +112,7 @@ public class Application {
 
 	@Bean
 	public ImapMailReceiver imapRetryReceiver() {
-		ImapMailReceiver result = new ImapMailReceiver("imaps://imap.gmail.com:993/Retry");
+		ImapMailReceiver result = new ImapMailReceiver(imapRetryUrl);
 		result.setSearchTermStrategy(new AllMessagesSearchTermStrategy());
 		result.setShouldMarkMessagesAsRead(false);
 		result.setShouldDeleteMessages(true);
@@ -179,7 +188,8 @@ public class Application {
 		Authenticator result = new Authenticator() {
 			@Override
 			protected PasswordAuthentication getPasswordAuthentication() {
-				return new PasswordAuthentication("<EMAIL>", "<PASSWORD>");
+//				return new PasswordAuthentication("<EMAIL>", "<PASSWORD>");
+				return new PasswordAuthentication("iteral.iteral@gmail.com", "1pwd4Mails");
 			}
 		};
 		return result;
