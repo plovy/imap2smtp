@@ -34,15 +34,29 @@ import java.util.Properties;
 /**
  * Installation instructions
  * https://docs.spring.io/spring-boot/docs/current/reference/html/deployment-install.html
- *
  */
 @SpringBootApplication
 public class Application {
 
-	private static final Log log = LogFactory.getLog(HeaderEnricher.class);
+	private static final Log log = LogFactory.getLog(Application.class);
 
+	@Value("${imap.inbox.url}")
+	private String imapInboxUrl;
+	@Value("${imap.spam.url}")
+	private String imapSpamUrl;
 	@Value("${imap.retry.url}")
 	private String imapRetryUrl;
+	@Value("${imap.reject.folder}")
+	private String imapRejectFolder;
+	@Value("${imap.username}")
+	private String imapUsername;
+	@Value("${imap.password}")
+	private String imapPassword;
+	@Value("${smtp.host}")
+	private String smtpHost;
+	@Value("${smtp.port}")
+	private Integer smtpPort;
+
 
 	public static void main(String[] args) {
 		SpringApplication.run(Application.class, args);
@@ -68,7 +82,7 @@ public class Application {
 							break;
 						}
 					}
-					log.info("Delivering message " + email.getSubject() + "to " + Arrays.toString(recipients));
+					log.info("Delivering message \"" + email.getSubject() + "\" to " + Arrays.toString(recipients));
 					smtpForwarder().forward(recipients, email);
 				} catch (Exception e) {
 					sendAlert(email, e);
@@ -82,7 +96,7 @@ public class Application {
 	private void rejectMessage(MimeMessage email) {
 		try {
 			Folder folder = email.getFolder();
-			Folder rejectFolder = folder.getStore().getFolder("Reject");
+			Folder rejectFolder = folder.getStore().getFolder(imapRejectFolder);
 			rejectFolder.open(Folder.READ_WRITE);
 			rejectFolder.appendMessages(new MimeMessage[]{email});
 			rejectFolder.close(false);
@@ -93,7 +107,7 @@ public class Application {
 
 	private void sendAlert(MimeMessage email, Exception e) {
 		try {
-			log.error("Error while delivering message " + email, e);
+			log.error("Error while delivering message " + email.getSubject(), e);
 			// TODO
 		} catch (Exception ex) {
 			log.error("Unexpected error while sending alert for message " + email, ex);
@@ -102,7 +116,7 @@ public class Application {
 
 	@Bean
 	public ImapMailReceiver imapInboxReceiver() {
-		ImapMailReceiver result = new ImapMailReceiver("imaps://imap.gmail.com:993/inbox2");
+		ImapMailReceiver result = new ImapMailReceiver(imapInboxUrl);
 		result.setShouldMarkMessagesAsRead(false);
 		result.setShouldDeleteMessages(true);
 		result.setJavaMailProperties(javaMailProperties());
@@ -123,7 +137,7 @@ public class Application {
 
 	@Bean
 	public ImapMailReceiver imapSpamReceiver() {
-		ImapMailReceiver result = new ImapMailReceiver("imaps://imap.gmail.com:993/Spam2");
+		ImapMailReceiver result = new ImapMailReceiver(imapSpamUrl);
 		result.setShouldMarkMessagesAsRead(false);
 		result.setShouldDeleteMessages(true);
 		result.setJavaMailProperties(javaMailProperties());
@@ -168,8 +182,8 @@ public class Application {
 	@Bean
 	public JavaMailForwarder smtpForwarder() {
 		JavaMailForwarder result = new JavaMailForwarder();
-		result.setHost("localhost");
-		result.setPort(2525);
+		result.setHost(smtpHost);
+		result.setPort(smtpPort);
 		return result;
 	}
 
@@ -188,8 +202,7 @@ public class Application {
 		Authenticator result = new Authenticator() {
 			@Override
 			protected PasswordAuthentication getPasswordAuthentication() {
-//				return new PasswordAuthentication("<EMAIL>", "<PASSWORD>");
-				return new PasswordAuthentication("iteral.iteral@gmail.com", "1pwd4Mails");
+				return new PasswordAuthentication(imapUsername, imapPassword);
 			}
 		};
 		return result;
