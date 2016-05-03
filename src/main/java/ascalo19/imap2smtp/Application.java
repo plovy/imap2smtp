@@ -26,10 +26,7 @@ import javax.mail.Folder;
 import javax.mail.PasswordAuthentication;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 
 /**
  * Installation instructions
@@ -52,11 +49,18 @@ public class Application {
 	private String imapUsername;
 	@Value("${imap.password}")
 	private String imapPassword;
+	@Value("${smtp.protocol}")
+	private String smtpProtocol;
 	@Value("${smtp.host}")
 	private String smtpHost;
 	@Value("${smtp.port}")
 	private Integer smtpPort;
-
+	@Value("${smtp.username}")
+	private String smtpUsername;
+	@Value("${smtp.password}")
+	private String smtpPassword;
+	@Value("${relay.domains}")
+	private String relayDomains;
 
 	public static void main(String[] args) {
 		SpringApplication.run(Application.class, args);
@@ -64,6 +68,7 @@ public class Application {
 
 	@Bean
 	public SubscribableChannel messageOutput() {
+		String[] domains = StringUtils.split(relayDomains, ',');
 		SubscribableChannel result = new ExecutorSubscribableChannel();
 		result.subscribe(new MessageHandler() {
 			@Override
@@ -73,17 +78,35 @@ public class Application {
 					if (message.getHeaders().containsKey("SPAM")) {
 						email.setSubject("[SPAM] " + email.getSubject());
 					}
-					Address[] recipients = email.getAllRecipients();
-					String[] receivedHeaders = email.getHeader("Received");
-					for (int i = receivedHeaders.length - 1; i >= 0; i--) {
-						if (StringUtils.contains(receivedHeaders[i], "for ")) {
-							String recipient = StringUtils.substringBetween(receivedHeaders[i], "for ", " ");
-							recipients = new Address[]{new InternetAddress(StringUtils.remove(recipient, ';'))};
-							break;
+					List<Address> recipients = new ArrayList<Address>();
+					if (email.getAllRecipients() != null) {
+						recipients.addAll(Arrays.asList(email.getAllRecipients()));
+					}
+					if (email.getHeader("Received") != null) {
+						for (String header : email.getHeader("Received")) {
+							if (StringUtils.contains(header, "for ")) {
+								String recipient = StringUtils.substringBetween(header, "for ", ";");
+								for (Address address : InternetAddress.parse(recipient)) {
+									recipients.add(address);
+								}
+							}
 						}
 					}
-					log.info("Delivering message \"" + email.getSubject() + "\" to " + Arrays.toString(recipients));
-					smtpForwarder().forward(recipients, email);
+
+					Map<String, InternetAddress> uniqueRecipients = new HashMap<>();
+					for (Address address : recipients) {
+						InternetAddress internetAddress = new InternetAddress(address.toString(), false);
+						if (StringUtils.containsAny(internetAddress.getAddress(), domains)) {
+							uniqueRecipients.put(internetAddress.getAddress(), new InternetAddress(internetAddress.getAddress()));
+						}
+					}
+
+					if (uniqueRecipients.isEmpty()) {
+						throw new Exception("Message \"" + email.getSubject() + "\" doesn't target domains " + Arrays.toString(domains) + " in recipients " + recipients.toString());
+					}
+
+					log.info("Delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
+					smtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
 				} catch (Exception e) {
 					sendAlert(email, e);
 					rejectMessage(email);
@@ -182,8 +205,11 @@ public class Application {
 	@Bean
 	public JavaMailForwarder smtpForwarder() {
 		JavaMailForwarder result = new JavaMailForwarder();
+		result.setProtocol(smtpProtocol);
 		result.setHost(smtpHost);
 		result.setPort(smtpPort);
+		result.setUsername(smtpUsername);
+		result.setPassword(smtpPassword);
 		return result;
 	}
 
