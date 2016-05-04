@@ -61,6 +61,8 @@ public class Application {
 	private String smtpPassword;
 	@Value("${relay.domains}")
 	private String relayDomains;
+	@Value("${relay.default.address}")
+	private String relayDefaultAddress;
 
 	public static void main(String[] args) {
 		SpringApplication.run(Application.class, args);
@@ -102,7 +104,11 @@ public class Application {
 					}
 
 					if (uniqueRecipients.isEmpty()) {
-						throw new Exception("Message \"" + email.getSubject() + "\" doesn't target domains " + Arrays.toString(domains) + " in recipients " + recipients.toString());
+						if (StringUtils.isNotBlank(relayDefaultAddress)) {
+							uniqueRecipients.put(relayDefaultAddress, new InternetAddress(relayDefaultAddress));
+						} else {
+							throw new Exception("Message \"" + email.getSubject() + "\" doesn't target domains " + Arrays.toString(domains) + " in recipients " + recipients.toString());
+						}
 					}
 
 					log.info("Delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
@@ -116,6 +122,15 @@ public class Application {
 		return result;
 	}
 
+	private void sendAlert(MimeMessage email, Exception e) {
+		try {
+			log.error("Error while delivering message " + email.getSubject(), e);
+			// TODO Send alert
+		} catch (Exception ex) {
+			log.error("Unexpected error while sending alert for message " + email, ex);
+		}
+	}
+
 	private void rejectMessage(MimeMessage email) {
 		try {
 			Folder folder = email.getFolder();
@@ -125,15 +140,6 @@ public class Application {
 			rejectFolder.close(false);
 		} catch (Exception e) {
 			log.error("Unexpected error while rejecting message " + email, e);
-		}
-	}
-
-	private void sendAlert(MimeMessage email, Exception e) {
-		try {
-			log.error("Error while delivering message " + email.getSubject(), e);
-			// TODO
-		} catch (Exception ex) {
-			log.error("Unexpected error while sending alert for message " + email, ex);
 		}
 	}
 
