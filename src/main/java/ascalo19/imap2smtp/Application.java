@@ -88,8 +88,12 @@ public class Application {
 						for (String header : email.getHeader("Received")) {
 							if (StringUtils.contains(header, "for ")) {
 								String recipient = StringUtils.substringBetween(header, "for ", ";");
-								for (Address address : InternetAddress.parse(recipient)) {
-									recipients.add(address);
+								try {
+									for (Address address : InternetAddress.parse(recipient)) {
+										recipients.add(address);
+									}
+								} catch (Exception e) {
+									log.warn("Invalid address in Received header : " + recipient);
 								}
 							}
 						}
