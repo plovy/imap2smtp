@@ -1,5 +1,6 @@
 package ascalo19.imap2smtp;
 
+import com.sun.mail.smtp.SMTPAddressFailedException;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -14,6 +15,7 @@ import org.springframework.integration.mail.ImapMailReceiver;
 import org.springframework.integration.transformer.HeaderEnricher;
 import org.springframework.integration.transformer.support.HeaderValueMessageProcessor;
 import org.springframework.integration.transformer.support.StaticHeaderValueMessageProcessor;
+import org.springframework.mail.MailSendException;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageHandler;
 import org.springframework.messaging.MessagingException;
@@ -115,8 +117,18 @@ public class Application {
 						}
 					}
 
-					log.info("Delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
-					smtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
+					try {
+						log.info("Delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
+						smtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
+					} catch (MailSendException e) {
+						uniqueRecipients.clear();
+						uniqueRecipients.put(relayDefaultAddress, new InternetAddress(relayDefaultAddress));
+
+						log.info("... delivery failed, about to deliver to default address");
+						log.info("Delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
+						smtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
+					}
+
 				} catch (Exception e) {
 					sendAlert(email, e);
 					rejectMessage(email);

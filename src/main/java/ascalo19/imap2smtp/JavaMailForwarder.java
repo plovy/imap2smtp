@@ -107,6 +107,7 @@ public class JavaMailForwarder extends JavaMailSenderImpl {
 				} catch (Exception ex) {
 					Object original = (originalMessages != null ? originalMessages[i] : mimeMessage);
 					failedMessages.put(original, ex);
+					//ex.printStackTrace();
 				}
 			}
 		} finally {
