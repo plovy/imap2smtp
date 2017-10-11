@@ -1,12 +1,12 @@
 package ascalo19.imap2smtp;
 
-import com.sun.mail.smtp.SMTPAddressFailedException;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.integration.annotation.Transformer;
 import org.springframework.integration.channel.DirectChannel;
@@ -26,6 +26,7 @@ import javax.mail.Address;
 import javax.mail.Authenticator;
 import javax.mail.Folder;
 import javax.mail.PasswordAuthentication;
+import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 import java.util.*;
@@ -61,6 +62,16 @@ public class Application {
 	private String smtpUsername;
 	@Value("${smtp.password}")
 	private String smtpPassword;
+	@Value("${additional.smtp.protocol:}")
+	private String additionalSmtpProtocol;
+	@Value("${additional.smtp.host:}")
+	private String additionalSmtpHost;
+	@Value("${additional.smtp.port:}")
+	private Integer additionalSmtpPort;
+	@Value("${additional.smtp.username:}")
+	private String additionalSmtpUsername;
+	@Value("${additional.smtp.password:}")
+	private String additionalSmtpPassword;
 	@Value("${relay.domains}")
 	private String relayDomains;
 	@Value("${relay.default.address}")
@@ -91,7 +102,7 @@ public class Application {
 							if (StringUtils.contains(header, "for ")) {
 								String recipient = StringUtils.substringBetween(header, "for ", ";");
 								try {
-									for (Address address : InternetAddress.parse(recipient)) {
+									for (Address address : parseAddressList(recipient)) {
 										recipients.add(address);
 									}
 								} catch (Exception e) {
@@ -103,15 +114,15 @@ public class Application {
 
 					Map<String, InternetAddress> uniqueRecipients = new HashMap<>();
 					for (Address address : recipients) {
-						InternetAddress internetAddress = new InternetAddress(address.toString(), false);
+						InternetAddress internetAddress = parseAddress(address.toString());
 						if (StringUtils.containsAny(internetAddress.getAddress(), domains)) {
-							uniqueRecipients.put(internetAddress.getAddress(), new InternetAddress(internetAddress.getAddress()));
+							uniqueRecipients.put(internetAddress.getAddress(), parseAddress(internetAddress.getAddress()));
 						}
 					}
 
 					if (uniqueRecipients.isEmpty()) {
 						if (StringUtils.isNotBlank(relayDefaultAddress)) {
-							uniqueRecipients.put(relayDefaultAddress, new InternetAddress(relayDefaultAddress));
+							uniqueRecipients.put(relayDefaultAddress, parseAddress(relayDefaultAddress));
 						} else {
 							throw new Exception("Message \"" + email.getSubject() + "\" doesn't target domains " + Arrays.toString(domains) + " in recipients " + recipients.toString());
 						}
@@ -122,11 +133,29 @@ public class Application {
 						smtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
 					} catch (MailSendException e) {
 						uniqueRecipients.clear();
-						uniqueRecipients.put(relayDefaultAddress, new InternetAddress(relayDefaultAddress));
+						uniqueRecipients.put(relayDefaultAddress, parseAddress(relayDefaultAddress));
 
 						log.info("... delivery failed, about to deliver to default address");
 						log.info("Delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
 						smtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
+					}
+
+					if (StringUtils.isNoneBlank(additionalSmtpHost)) {
+						try {
+							try {
+								log.info("Additionally delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
+								additionalSmtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
+							} catch (MailSendException e) {
+								uniqueRecipients.clear();
+								uniqueRecipients.put(relayDefaultAddress, parseAddress(relayDefaultAddress));
+
+								log.info("... delivery failed, about to deliver to default address");
+								log.info("Additionally delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
+								additionalSmtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
+							}
+						} catch (Exception e) {
+							// Ignore (avoid reject)
+						}
 					}
 
 				} catch (Exception e) {
@@ -136,6 +165,14 @@ public class Application {
 			}
 		});
 		return result;
+	}
+
+	private InternetAddress[] parseAddressList(String address) throws AddressException {
+		return InternetAddress.parseHeader(address, false);
+	}
+
+	private InternetAddress parseAddress(String address) throws AddressException {
+		return parseAddressList(address)[0];
 	}
 
 	private void sendAlert(MimeMessage email, Exception e) {
@@ -236,11 +273,24 @@ public class Application {
 	}
 
 	@Bean
+	@ConditionalOnProperty(name = "additional.smtp.host")
+	public JavaMailForwarder additionalSmtpForwarder() {
+		JavaMailForwarder result = new JavaMailForwarder();
+		result.setProtocol(additionalSmtpProtocol);
+		result.setHost(additionalSmtpHost);
+		result.setPort(additionalSmtpPort);
+		result.setUsername(additionalSmtpUsername);
+		result.setPassword(additionalSmtpPassword);
+		return result;
+	}
+
+	@Bean
 	public Properties javaMailProperties() {
 		Properties result = new Properties();
 		result.setProperty("mail.imap.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
 		result.setProperty("mail.imap.socketFactory.fallback", "false");
 		result.setProperty("mail.store.protocol", "imaps");
+		result.setProperty("mail.mime.address.strict", "false");
 		result.setProperty("mail.debug", "false");
 		return result;
 	}
