@@ -1,6 +1,8 @@
 package ascalo19.imap2smtp;
 
+import com.sun.mail.imap.IMAPFolder;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,9 +18,6 @@ import org.springframework.integration.transformer.HeaderEnricher;
 import org.springframework.integration.transformer.support.HeaderValueMessageProcessor;
 import org.springframework.integration.transformer.support.StaticHeaderValueMessageProcessor;
 import org.springframework.mail.MailSendException;
-import org.springframework.messaging.Message;
-import org.springframework.messaging.MessageHandler;
-import org.springframework.messaging.MessagingException;
 import org.springframework.messaging.SubscribableChannel;
 import org.springframework.messaging.support.ExecutorSubscribableChannel;
 
@@ -48,6 +47,8 @@ public class Application {
 	private String imapRetryUrl;
 	@Value("${imap.reject.folder}")
 	private String imapRejectFolder;
+	@Value("${imap.trash.folder}")
+	private String imapTrashFolder;
 	@Value("${imap.username}")
 	private String imapUsername;
 	@Value("${imap.password}")
@@ -85,83 +86,82 @@ public class Application {
 	public SubscribableChannel messageOutput() {
 		String[] domains = StringUtils.split(relayDomains, ',');
 		SubscribableChannel result = new ExecutorSubscribableChannel();
-		result.subscribe(new MessageHandler() {
-			@Override
-			public void handleMessage(Message<?> message) throws MessagingException {
-				MimeMessage email = (MimeMessage) message.getPayload();
-				try {
-					if (message.getHeaders().containsKey("SPAM")) {
-						email.setSubject("[SPAM] " + email.getSubject());
-					}
-					List<Address> recipients = new ArrayList<Address>();
-					if (email.getAllRecipients() != null) {
-						recipients.addAll(Arrays.asList(email.getAllRecipients()));
-					}
-					if (email.getHeader("Received") != null) {
-						for (String header : email.getHeader("Received")) {
-							if (StringUtils.contains(header, "for ")) {
-								String recipient = StringUtils.substringBetween(header, "for ", ";");
-								try {
-									for (Address address : parseAddressList(recipient)) {
-										recipients.add(address);
-									}
-								} catch (Exception e) {
-									log.warn("Invalid address in Received header : " + recipient);
-								}
-							}
-						}
-					}
-
-					Map<String, InternetAddress> uniqueRecipients = new HashMap<>();
-					for (Address address : recipients) {
-						InternetAddress internetAddress = parseAddress(address.toString());
-						if (StringUtils.containsAny(internetAddress.getAddress(), domains)) {
-							uniqueRecipients.put(internetAddress.getAddress(), parseAddress(internetAddress.getAddress()));
-						}
-					}
-
-					if (uniqueRecipients.isEmpty()) {
-						if (StringUtils.isNotBlank(relayDefaultAddress)) {
-							uniqueRecipients.put(relayDefaultAddress, parseAddress(relayDefaultAddress));
-						} else {
-							throw new Exception("Message \"" + email.getSubject() + "\" doesn't target domains " + Arrays.toString(domains) + " in recipients " + recipients.toString());
-						}
-					}
-
-					try {
-						log.info("Delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
-						smtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
-					} catch (MailSendException e) {
-						uniqueRecipients.clear();
-						uniqueRecipients.put(relayDefaultAddress, parseAddress(relayDefaultAddress));
-
-						log.info("... delivery failed, about to deliver to default address");
-						log.info("Delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
-						smtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
-					}
-
-					if (StringUtils.isNoneBlank(additionalSmtpHost)) {
-						try {
-							try {
-								log.info("Additionally delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
-								additionalSmtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
-							} catch (MailSendException e) {
-								uniqueRecipients.clear();
-								uniqueRecipients.put(relayDefaultAddress, parseAddress(relayDefaultAddress));
-
-								log.info("... delivery failed, about to deliver to default address");
-								log.info("Additionally delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
-								additionalSmtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
-							}
-						} catch (Exception e) {
-							// Ignore (avoid reject)
-						}
-					}
-
-				} catch (Exception e) {
-					sendAlert(email, e);
-					rejectMessage(email);
+		result.subscribe(message -> {
+			MimeMessage email = (MimeMessage) message.getPayload();
+			try {
+				if (message.getHeaders().containsKey("SPAM")) {
+					email.setSubject("[SPAM] " + email.getSubject());
 				}
+				List<Address> recipients = new ArrayList<Address>();
+				if (email.getAllRecipients() != null) {
+					recipients.addAll(Arrays.asList(email.getAllRecipients()));
+				}
+				if (email.getHeader("Received") != null) {
+					for (String header : email.getHeader("Received")) {
+						if (StringUtils.contains(header, "for ")) {
+							String recipient = StringUtils.substringBetween(header, "for ", ";");
+							try {
+								for (Address address : parseAddressList(recipient)) {
+									recipients.add(address);
+								}
+							} catch (Exception e) {
+								log.warn("Invalid address in Received header : " + recipient);
+							}
+						}
+					}
+				}
+
+				Map<String, InternetAddress> uniqueRecipients = new HashMap<>();
+				for (Address address : recipients) {
+					InternetAddress internetAddress = parseAddress(address.toString());
+					if (StringUtils.containsAny(internetAddress.getAddress(), domains)) {
+						uniqueRecipients.put(internetAddress.getAddress(), parseAddress(internetAddress.getAddress()));
+					}
+				}
+
+				if (uniqueRecipients.isEmpty()) {
+					if (StringUtils.isNotBlank(relayDefaultAddress)) {
+						uniqueRecipients.put(relayDefaultAddress, parseAddress(relayDefaultAddress));
+					} else {
+						throw new Exception("Message \"" + email.getSubject() + "\" doesn't target domains " + Arrays.toString(domains) + " in recipients " + recipients.toString());
+					}
+				}
+
+				try {
+					log.info("Delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
+					smtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
+				} catch (MailSendException e) {
+					uniqueRecipients.clear();
+					uniqueRecipients.put(relayDefaultAddress, parseAddress(relayDefaultAddress));
+
+					log.info("... delivery failed, about to deliver to default address");
+					log.info("Delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
+					smtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
+				}
+
+				if (StringUtils.isNoneBlank(additionalSmtpHost)) {
+					try {
+						try {
+							log.info("Additionally delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
+							additionalSmtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
+						} catch (MailSendException e) {
+							uniqueRecipients.clear();
+							uniqueRecipients.put(relayDefaultAddress, parseAddress(relayDefaultAddress));
+
+							log.info("... delivery failed, about to deliver to default address");
+							log.info("Additionally delivering message \"" + email.getSubject() + "\" from " + Arrays.toString(email.getFrom()) + " to " + uniqueRecipients.values().toString());
+							additionalSmtpForwarder().forward(uniqueRecipients.values().toArray(new Address[uniqueRecipients.size()]), email);
+						}
+					} catch (Exception e) {
+						// Ignore (avoid reject)
+					}
+				}
+
+				deleteMessage(email);
+
+			} catch (Exception e) {
+				sendAlert(email, e);
+				rejectMessage(email);
 			}
 		});
 		return result;
@@ -184,23 +184,39 @@ public class Application {
 		}
 	}
 
-	private void rejectMessage(MimeMessage email) {
-		try {
-			Folder folder = email.getFolder();
-			Folder rejectFolder = folder.getStore().getFolder(imapRejectFolder);
-			rejectFolder.open(Folder.READ_WRITE);
-			rejectFolder.appendMessages(new MimeMessage[]{email});
-			rejectFolder.close(false);
-		} catch (Exception e) {
-			log.error("Unexpected error while rejecting message " + email, e);
+	private void deleteMessage(MimeMessage email) {
+		if (StringUtils.isNotBlank(imapTrashFolder)) {
+			try {
+				move(email, imapTrashFolder);
+			} catch (Exception e) {
+				log.error("Unexpected error while deleting message " + email, e);
+			}
 		}
+	}
+
+	private void rejectMessage(MimeMessage email) {
+		if (StringUtils.isNotBlank(imapRejectFolder)) {
+			try {
+				move(email, imapRejectFolder);
+			} catch (Exception e) {
+				log.error("Unexpected error while rejecting message " + email, e);
+			}
+		}
+	}
+
+	private void move(MimeMessage email, String targetFolder) throws Exception {
+		Folder source = email.getFolder();
+		Folder target = source.getStore().getFolder(targetFolder);
+		source.open(Folder.READ_WRITE);
+		target.open(Folder.READ_WRITE);
+		((IMAPFolder) source).moveMessages(new MimeMessage[]{(MimeMessage) FieldUtils.readField(email, "source", true)}, target);
+		source.close(true);
+		target.close(false);
 	}
 
 	@Bean
 	public ImapMailReceiver imapInboxReceiver() {
 		ImapMailReceiver result = new ImapMailReceiver(imapInboxUrl);
-		result.setShouldMarkMessagesAsRead(false);
-		result.setShouldDeleteMessages(true);
 		result.setJavaMailProperties(javaMailProperties());
 		result.setJavaMailAuthenticator(javaMailAuthenticator());
 		return result;
@@ -209,9 +225,7 @@ public class Application {
 	@Bean
 	public ImapMailReceiver imapRetryReceiver() {
 		ImapMailReceiver result = new ImapMailReceiver(imapRetryUrl);
-		result.setSearchTermStrategy(new AllMessagesSearchTermStrategy());
-		result.setShouldMarkMessagesAsRead(false);
-		result.setShouldDeleteMessages(true);
+//		result.setSearchTermStrategy(new AllMessagesSearchTermStrategy());
 		result.setJavaMailProperties(javaMailProperties());
 		result.setJavaMailAuthenticator(javaMailAuthenticator());
 		return result;
@@ -220,8 +234,6 @@ public class Application {
 	@Bean
 	public ImapMailReceiver imapSpamReceiver() {
 		ImapMailReceiver result = new ImapMailReceiver(imapSpamUrl);
-		result.setShouldMarkMessagesAsRead(false);
-		result.setShouldDeleteMessages(true);
 		result.setJavaMailProperties(javaMailProperties());
 		result.setJavaMailAuthenticator(javaMailAuthenticator());
 		return result;
